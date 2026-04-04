@@ -1,14 +1,14 @@
 {
   "domain": "varta_storage",
   "name": "VARTA Storage",
-  "version": "0.1.9",
-  "codeowners": ["@Vip0r"],
+  "version": "0.2.0",
+  "codeowners": ["@GhostCHS"],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/Vip0r/varta_storage",
+  "documentation": "https://github.com/GhostCHS/varta_storage_ha",
   "homekit": {},
   "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/Vip0r/varta_storage/issues",
+  "issue_tracker": "https://github.com/GhostCHS/varta_storage_ha/issues",
   "requirements": ["vartastorage==0.4.3"],
   "ssdp": [],
   "zeroconf": []
