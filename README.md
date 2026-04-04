@@ -10,13 +10,4 @@
 
 ## Configuration is done in the UI
 
-<!---->
-
-## Contributions are welcome!
-
-If you want to contribute to this please read the [Contribution guidelines](CONTRIBUTING.md)
-
-***
-
-[releases]: https://github.com/Vip0r/vartastorage-hacs/releases
-[varta_storage]: https://www.varta-ag.com/
+Based on @Vip0r/varta_storage
