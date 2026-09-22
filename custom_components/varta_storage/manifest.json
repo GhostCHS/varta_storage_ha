@@ -9,6 +9,5 @@
   "integration_type": "device",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/GhostCHS/varta_storage_ha/issues",
-  "requirements": ["modbus-connection>=4.12.1"],
-  "version": "0.3.0"
+  "requirements": ["modbus-connection>=4.12.1"]
 }
