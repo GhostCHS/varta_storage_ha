@@ -6,7 +6,11 @@ from dataclasses import dataclass
 import logging
 from typing import Final
 
-from homeassistant.components.sensor import SensorEntityDescription
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntityDescription,
+    SensorStateClass,
+)
 from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfPower, UnitOfTime
 
 DOMAIN = "varta_storage"
@@ -27,6 +31,13 @@ class VartaSensorEntityDescription(SensorEntityDescription):
     source_key: str = ""
 
 
+_POWER = {
+    "device_class": SensorDeviceClass.POWER,
+    "native_unit_of_measurement": UnitOfPower.WATT,
+    "state_class": SensorStateClass.MEASUREMENT,
+}
+
+
 SENSORS: Final[tuple[VartaSensorEntityDescription, ...]] = (
     VartaSensorEntityDescription(
         key="state",
@@ -37,127 +48,139 @@ SENSORS: Final[tuple[VartaSensorEntityDescription, ...]] = (
         key="active_power",
         name="Batterieleistung",
         source_key="active_power",
-        native_unit_of_measurement=UnitOfPower.WATT,
+        **_POWER,
     ),
     VartaSensorEntityDescription(
         key="charging_power",
         name="Ladeleistung",
         source_key="charging_power",
-        native_unit_of_measurement=UnitOfPower.WATT,
+        **_POWER,
     ),
     VartaSensorEntityDescription(
         key="discharging_power",
         name="Entladeleistung",
         source_key="discharging_power",
-        native_unit_of_measurement=UnitOfPower.WATT,
+        **_POWER,
     ),
     VartaSensorEntityDescription(
         key="soc",
         name="Ladezustand",
         source_key="state_of_charge",
         native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
     ),
     VartaSensorEntityDescription(
         key="grid_power",
         name="Netzleistung",
         source_key="grid_power",
-        native_unit_of_measurement=UnitOfPower.WATT,
+        **_POWER,
     ),
     VartaSensorEntityDescription(
         key="installed_capacity",
         name="Batteriekapazität",
         source_key="installed_capacity",
+        device_class=SensorDeviceClass.ENERGY_STORAGE,
         native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
     ),
     VartaSensorEntityDescription(
         key="error_code",
         name="Fehlercode",
         source_key="error_code",
+        entity_category="diagnostic",
     ),
     VartaSensorEntityDescription(
         key="external_control_timeout",
         name="Watchdog",
         source_key="external_control_timeout",
         native_unit_of_measurement=UnitOfTime.SECONDS,
+        entity_category="diagnostic",
     ),
     VartaSensorEntityDescription(
         key="installed_modules",
         name="Batteriemodule",
         source_key="installed_battery_modules",
+        entity_category="diagnostic",
     ),
     VartaSensorEntityDescription(
         key="ems_software",
         name="EMS Software",
         source_key="ems_software",
+        entity_category="diagnostic",
     ),
     VartaSensorEntityDescription(
         key="ens_software",
         name="ENS Software",
         source_key="ens_software",
+        entity_category="diagnostic",
     ),
     VartaSensorEntityDescription(
         key="software",
         name="VARTA Software",
         source_key="software",
+        entity_category="diagnostic",
     ),
     VartaSensorEntityDescription(
         key="ac_to_dc_energy",
         name="Geladene Energie",
         source_key="ac_to_dc_energy",
+        device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+        state_class=SensorStateClass.TOTAL_INCREASING,
     ),
     VartaSensorEntityDescription(
         key="production_power",
         name="Produktionsleistung",
         source="web",
         source_key="production_power",
-        native_unit_of_measurement=UnitOfPower.WATT,
+        **_POWER,
     ),
     VartaSensorEntityDescription(
         key="house_consumption",
         name="Hausverbrauch",
         source="web",
         source_key="house_consumption",
-        native_unit_of_measurement=UnitOfPower.WATT,
+        **_POWER,
     ),
     VartaSensorEntityDescription(
         key="grid_import_power",
         name="Netzbezug",
         source="web",
         source_key="grid_import_power",
-        native_unit_of_measurement=UnitOfPower.WATT,
+        **_POWER,
     ),
     VartaSensorEntityDescription(
         key="grid_export_power",
         name="Netzeinspeisung",
         source="web",
         source_key="grid_export_power",
-        native_unit_of_measurement=UnitOfPower.WATT,
+        **_POWER,
     ),
     VartaSensorEntityDescription(
         key="battery_charge_power_web",
         name="Ladeleistung (WebIF)",
         source="web",
         source_key="battery_charge_power",
-        native_unit_of_measurement=UnitOfPower.WATT,
+        **_POWER,
     ),
     VartaSensorEntityDescription(
         key="battery_discharge_power_web",
         name="Entladeleistung (WebIF)",
         source="web",
         source_key="battery_discharge_power",
-        native_unit_of_measurement=UnitOfPower.WATT,
+        **_POWER,
     ),
     VartaSensorEntityDescription(
         key="charge_cycles",
         name="Ladezyklen",
         source="web",
         source_key="charge_cycles",
+        state_class=SensorStateClass.TOTAL_INCREASING,
     ),
     VartaSensorEntityDescription(
         key="active_errors",
         name="Aktive Fehler",
         source="web",
         source_key="active_errors",
+        entity_category="diagnostic",
     ),
 )
