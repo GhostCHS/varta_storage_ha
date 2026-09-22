@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from homeassistant.components.number import NumberEntity, NumberEntityDescription
 from homeassistant.const import EntityCategory, UnitOfPower
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -12,6 +14,7 @@ from . import VartaConfigEntry
 from .const import DOMAIN
 
 
+@dataclass(frozen=True, kw_only=True)
 class VartaNumberDescription(NumberEntityDescription):
     """Describe a writable VARTA setting."""
 
@@ -48,10 +51,7 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up writable VARTA limits."""
-    async_add_entities(
-        VartaNumber(entry, description)
-        for description in NUMBERS
-    )
+    async_add_entities(VartaNumber(entry, description) for description in NUMBERS)
 
 
 class VartaNumber(CoordinatorEntity, NumberEntity):
