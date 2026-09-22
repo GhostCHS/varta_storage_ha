@@ -1,77 +1,109 @@
-"""Sensor platform of the VARTA Storage integration."""
+"""Sensor platform for the unified VARTA Storage integration."""
+
+from __future__ import annotations
+
+from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, SENSORS_CGI, SENSORS_MODBUS, VartaSensorEntityDescription
+from . import VartaConfigEntry
+from .const import DOMAIN, SENSORS, VartaSensorEntityDescription
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant,
+    entry: VartaConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Initialize the integration."""
-    coordinators = hass.data[DOMAIN][entry.entry_id]
-    modbus_coordinator = coordinators["modbus"]
-    cgi_coordinator = coordinators.get("cgi")
-
-    entities = []
-
-    if entry.data.get("cgi") and cgi_coordinator:
-        entities.extend(
-            VartaStorageEntity(cgi_coordinator, description=description)
-            for description in SENSORS_CGI
-        )
-
-    entities.extend(
-        VartaStorageEntity(modbus_coordinator, description=description)
-        for description in SENSORS_MODBUS
+    """Set up VARTA sensors."""
+    async_add_entities(
+        VartaSensor(entry, description)
+        for description in SENSORS
+        if description.source != "web" or entry.runtime_data.web_coordinator is not None
     )
 
-    async_add_entities(entities)
 
+class VartaSensor(SensorEntity):
+    """A VARTA sensor backed by Modbus or WebIF data."""
 
-class VartaStorageEntity(CoordinatorEntity, SensorEntity):
-    """An entity using CoordinatorEntity.
+    _attr_has_entity_name = True
 
-    The CoordinatorEntity class provides:
-    should_poll
-    async_update
-    async_added_to_hass
-    available
-
-    """
-
-    entity_description: VartaSensorEntityDescription
-
-    def __init__(self, coordinator, description: VartaSensorEntityDescription):
-        """Pass coordinator to CoordinatorEntity."""
-        super().__init__(coordinator)
-
-        self._attr_device_info = DeviceInfo(
-            configuration_url=f"http://{coordinator.config_entry.data['host']}",
-            identifiers={(DOMAIN, str(coordinator.config_entry.unique_id))},
-            manufacturer="VARTA",
-            name="VARTA Battery",
-        )
-
+    def __init__(
+        self,
+        entry: VartaConfigEntry,
+        description: VartaSensorEntityDescription,
+    ) -> None:
         self.entity_description = description
-        self._attr_unique_id = (
-            f"{coordinator.config_entry.unique_id}-{self.entity_description.key}"
+        device = entry.runtime_data.device
+        serial = device.identity.serial_number or entry.entry_id
+        self._attr_unique_id = f"{serial}_{description.key}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, serial)},
+            manufacturer="VARTA",
+            name="VARTA Storage",
+            serial_number=device.identity.serial_number,
+            sw_version=device.identity.software,
+            configuration_url=f"http://{entry.data['host']}",
         )
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        if self.entity_description.source_key is None:
-            raise Exception(
-                "Invalid entity configuration: source_key is not set in varta entity description."
-            )
-        self._attr_native_value = self.coordinator.data.get(
+        if description.source == "modbus":
+            self._coordinator = entry.runtime_data.modbus_coordinator
+        else:
+            self._coordinator = entry.runtime_data.web_coordinator
+
+    @property
+    def native_value(self) -> Any:
+        """Return the current value."""
+        if self.entity_description.source == "modbus":
+            device = self._coordinator.device
+            key = self.entity_description.source_key
+            if key == "state":
+                return device.battery.state.name.lower() if device.battery.state is not None else None
+            if key == "active_power":
+                return device.battery.active_power
+            if key == "charging_power":
+                return device.battery.charging_power
+            if key == "discharging_power":
+                return device.battery.discharging_power
+            if key == "state_of_charge":
+                return device.battery.state_of_charge
+            if key == "grid_power":
+                return device.grid.power
+            if key == "installed_capacity":
+                return device.battery.installed_capacity
+            if key == "error_code":
+                return device.battery.error_code
+            if key == "external_control_timeout":
+                return device.battery.external_control_timeout
+            if key == "installed_battery_modules":
+                return device.identity.installed_battery_modules
+            if key == "ems_software":
+                return device.identity.ems_software
+            if key == "ens_software":
+                return device.identity.ens_software
+            if key == "software":
+                return device.identity.software
+            if key == "ac_to_dc_energy":
+                return device.battery.ac_to_dc_energy
+            return None
+
+        if self._coordinator is None or not self._coordinator.data:
+            return None
+        return self._coordinator.data.get("summary", {}).get(
             self.entity_description.source_key
         )
 
-        self.async_write_ha_state()
+    @property
+    def available(self) -> bool:
+        """Return whether the backing coordinator is available."""
+        return bool(self._coordinator and self._coordinator.last_update_success)
+
+    async def async_update(self) -> None:
+        """Update through the coordinator."""
+        if self._coordinator is not None:
+            await self._coordinator.async_request_refresh()
