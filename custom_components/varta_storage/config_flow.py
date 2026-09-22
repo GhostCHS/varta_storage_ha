@@ -1,208 +1,101 @@
-"""Config flow for VARTA Storage integration."""
+"""Config flow for the unified VARTA Storage integration."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from vartastorage import vartastorage
 import voluptuous as vol
+from modbus_connection import ModbusError, ModbusTcpParams
 
-from homeassistant import config_entries
+from homeassistant.components.modbus import async_get_temporary_unit
+from homeassistant.config_entries import ConfigFlowResult, ConfigFlow
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
+    CONF_UNIT_ID,
+    DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL_CGI,
     DEFAULT_SCAN_INTERVAL_MODBUS,
+    DEFAULT_UNIT_ID,
     DOMAIN,
-    LOGGER,
 )
-
-STEP_USER_DATA_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_HOST): str,
-        vol.Required(CONF_PORT, default=502): int,
-        vol.Optional("scan_interval_modbus", default=DEFAULT_SCAN_INTERVAL_MODBUS): int,
-        vol.Required("cgi", default=True): bool,
-        vol.Optional("host_cgi", default=""): str,
-        vol.Optional(CONF_USERNAME, default="user1"): str,
-        vol.Optional(CONF_PASSWORD, default=""): str,
-        vol.Optional("scan_interval_cgi", default=DEFAULT_SCAN_INTERVAL_CGI): int,
-    }
-)
+from .vendor.varta_modbus import VartaStorage
 
 
-class VartaHub:
-    """Provide methods for GUI configuration."""
-
-    def __init__(
-        self,
-        host: str,
-        port: int,
-        scan_interval_modbus: int,
-        cgi: bool,
-        scan_interval_cgi: int,
-        host_cgi: str | None = None,
-        username: str | None = None,
-        password: str | None = None,
-    ) -> None:
-        """Initialize."""
-        self.host = host
-        self.port = port
-        self.serial = ""
-        self.scan_interval_modbus = scan_interval_modbus
-        self.cgi = cgi
-        self.host_cgi = host_cgi
-        self.username = username
-        self.password = password
-        self.scan_interval_cgi = scan_interval_cgi
-
-    def test_connection(self) -> bool:
-        """Test a connection to the VARTA device."""
-        varta = vartastorage.VartaStorage(
-            self.host,
-            self.port,
-            self.cgi,
-            self.username,
-            self.password,
-        )
-        try:
-            self.serial = varta.modbus_client.get_serial()
-            return True
-        except Exception:
-            return False
+async def async_validate_modbus(hass, data: dict[str, Any]) -> str:
+    """Validate the Modbus endpoint and return the VARTA serial number."""
+    params = ModbusTcpParams(host=data[CONF_HOST].strip(), port=data[CONF_PORT])
+    async with async_get_temporary_unit(hass, params, data[CONF_UNIT_ID]) as unit:
+        device = VartaStorage(unit)
+        await device.async_validate()
+        return device.identity.serial_number or "unknown"
 
 
-async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """Validate the user input allows us to connect."""
-
-    hub = VartaHub(
-        host=data[CONF_HOST],
-        port=data[CONF_PORT],
-        scan_interval_modbus=data["scan_interval_modbus"],
-        cgi=data["cgi"],
-        scan_interval_cgi=data["scan_interval_cgi"],
-        host_cgi=data["host_cgi"],
-        username=data[CONF_USERNAME],
-        password=data[CONF_PASSWORD],
+def _schema(data: dict[str, Any] | None = None) -> vol.Schema:
+    data = data or {}
+    return vol.Schema(
+        {
+            vol.Required(CONF_HOST, default=data.get(CONF_HOST, "")): str,
+            vol.Required(CONF_PORT, default=data.get(CONF_PORT, DEFAULT_PORT)): vol.All(
+                vol.Coerce(int), vol.Range(min=1, max=65535)
+            ),
+            vol.Required(CONF_UNIT_ID, default=data.get(CONF_UNIT_ID, DEFAULT_UNIT_ID)): vol.All(
+                vol.Coerce(int), vol.Range(min=1, max=247)
+            ),
+            vol.Required(
+                "scan_interval_modbus",
+                default=data.get("scan_interval_modbus", DEFAULT_SCAN_INTERVAL_MODBUS),
+            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=60)),
+            vol.Required("cgi", default=data.get("cgi", True)): bool,
+            vol.Optional("host_cgi", default=data.get("host_cgi", "")): str,
+            vol.Optional(CONF_USERNAME, default=data.get(CONF_USERNAME, "user1")): str,
+            vol.Optional(CONF_PASSWORD, default=data.get(CONF_PASSWORD, "")): str,
+            vol.Required(
+                "scan_interval_cgi",
+                default=data.get("scan_interval_cgi", DEFAULT_SCAN_INTERVAL_CGI),
+            ): vol.All(vol.Coerce(int), vol.Range(min=5, max=300)),
+        }
     )
 
-    if not await hass.async_add_executor_job(hub.test_connection):
-        raise CannotConnect
 
-    return {
-        "title": f"{data[CONF_HOST]} (S/N: {hub.serial})",
-        "serial": hub.serial,
-        "scan_interval_modbus": hub.scan_interval_modbus,
-        "scan_interval_cgi": hub.scan_interval_cgi,
-    }
+class ConfigFlow(ConfigFlow, domain=DOMAIN):
+    """Handle the VARTA Storage config flow."""
 
+    VERSION = 2
 
-class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for VARTA Storage."""
-
-    VERSION = 1
-
-    @staticmethod
-    @callback
-    def async_get_options_flow(
-        config_entry: config_entries.ConfigEntry,
-    ) -> config_entries.OptionsFlow:
-        """Create the options flow."""
-        return OptionsFlowHandler(config_entry)
-
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle the initial step."""
-        if user_input is None:
-            return self.async_show_form(
-                step_id="user",
-                data_schema=STEP_USER_DATA_SCHEMA,
-            )
-
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
-
-        try:
-            info = await validate_input(self.hass, user_input)
-        except CannotConnect:
-            errors["base"] = "cannot_connect"
-        except Exception as err:
-            LOGGER.exception("Unexpected exception during config flow: %s", err)
-            errors["base"] = "unknown"
-        else:
-            await self.async_set_unique_id(info["serial"])
-            self._abort_if_unique_id_configured()
-            return self.async_create_entry(title=info["title"], data=user_input)
-
-        return self.async_show_form(
-            step_id="user",
-            data_schema=STEP_USER_DATA_SCHEMA,
-            errors=errors,
-        )
-
-
-class CannotConnect(HomeAssistantError):
-    """Error to indicate we cannot connect."""
-
-
-class OptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle options flow for VARTA Storage."""
-
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Initialize options flow."""
-        self.config_entry = config_entry
-
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Manage the options."""
-        current = self.config_entry.data.copy()
-        current.update(self.config_entry.options)
-
         if user_input is not None:
-            self.hass.config_entries.async_update_entry(
-                self.config_entry,
-                data=user_input,
-                options=self.config_entry.options,
-            )
-            return self.async_create_entry(
-                title=self.config_entry.title,
-                data=user_input,
-            )
+            user_input[CONF_HOST] = user_input[CONF_HOST].strip()
+            try:
+                serial = await async_validate_modbus(self.hass, user_input)
+            except (ModbusError, HomeAssistantError, TimeoutError, ValueError):
+                errors["base"] = "cannot_connect"
+            except Exception:
+                errors["base"] = "unknown"
+            else:
+                await self.async_set_unique_id(serial)
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(
+                    title=f"VARTA Storage ({serial})",
+                    data=user_input,
+                )
+        return self.async_show_form(step_id="user", data_schema=_schema(user_input), errors=errors)
 
-        schema = vol.Schema(
-            {
-                vol.Required(CONF_HOST, default=current.get(CONF_HOST, "")): str,
-                vol.Required(CONF_PORT, default=current.get(CONF_PORT, 502)): int,
-                vol.Optional(
-                    "scan_interval_modbus",
-                    default=current.get(
-                        "scan_interval_modbus", DEFAULT_SCAN_INTERVAL_MODBUS
-                    ),
-                ): int,
-                vol.Required("cgi", default=current.get("cgi", True)): bool,
-                vol.Optional("host_cgi", default=current.get("host_cgi", "")): str,
-                vol.Optional(
-                    CONF_USERNAME,
-                    default=current.get(CONF_USERNAME, "user1"),
-                ): str,
-                vol.Optional(
-                    CONF_PASSWORD,
-                    default=current.get(CONF_PASSWORD, ""),
-                ): str,
-                vol.Optional(
-                    "scan_interval_cgi",
-                    default=current.get(
-                        "scan_interval_cgi", DEFAULT_SCAN_INTERVAL_CGI
-                    ),
-                ): int,
-            }
-        )
-
+    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            user_input[CONF_HOST] = user_input[CONF_HOST].strip()
+            try:
+                await async_validate_modbus(self.hass, user_input)
+            except (ModbusError, HomeAssistantError, TimeoutError, ValueError):
+                errors["base"] = "cannot_connect"
+            else:
+                return self.async_update_reload_and_abort(entry, data=user_input)
         return self.async_show_form(
-            step_id="init",
-            data_schema=schema,
+            step_id="reconfigure",
+            data_schema=_schema(entry.data),
+            errors=errors,
         )
