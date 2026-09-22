@@ -21,16 +21,23 @@ _LOGGER = logging.getLogger(__name__)
 class VartaModbusCoordinator(DataUpdateCoordinator[None]):
     """Poll the VARTA Modbus device."""
 
-    def __init__(self, hass: HomeAssistant, device: VartaStorage, interval: int = 1) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        device: VartaStorage,
+        interval: int = 1,
+    ) -> None:
         super().__init__(
             hass,
             logger=_LOGGER,
             name="VARTA Modbus",
             update_interval=timedelta(seconds=interval),
+            always_update=True,
         )
         self.device = device
 
     async def _async_update_data(self) -> None:
+        """Update the device and notify entities after every successful poll."""
         try:
             await self.device.async_update_readings()
         except ModbusError as err:
@@ -59,13 +66,17 @@ class VartaWebCoordinator(DataUpdateCoordinator[dict]):
         self._last_good_data: dict | None = None
 
     async def _async_update_data(self) -> dict:
+        """Read the WebIF and retain the last successful snapshot on errors."""
         try:
             data = await self.client.read_all()
             self._last_good_data = data
             return data
         except Exception as err:
             if self._last_good_data is not None:
-                _LOGGER.debug("Temporary VARTA WebIF failure; keeping last valid values: %s", err)
+                _LOGGER.debug(
+                    "Temporary VARTA WebIF failure; keeping last valid values: %s",
+                    err,
+                )
                 return self._last_good_data
             raise UpdateFailed(str(err)) from err
 
