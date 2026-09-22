@@ -1,7 +1,7 @@
 {
   "domain": "varta_storage",
   "name": "VARTA Storage",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "codeowners": ["@GhostCHS"],
   "config_flow": true,
   "dependencies": ["modbus"],
