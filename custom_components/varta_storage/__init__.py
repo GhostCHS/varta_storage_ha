@@ -12,11 +12,20 @@ from homeassistant.const import CONF_HOST, CONF_PORT, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
-from .const import CONF_UNIT_ID, DOMAIN, DEFAULT_SCAN_INTERVAL_CGI, DEFAULT_SCAN_INTERVAL_MODBUS
-from .coordinator import VartaModbusCoordinator, VartaWebCoordinator, create_web_coordinator
+from .const import (
+    CONF_UNIT_ID,
+    DEFAULT_SCAN_INTERVAL_CGI,
+    DEFAULT_SCAN_INTERVAL_MODBUS,
+    DOMAIN,
+)
+from .coordinator import (
+    VartaModbusCoordinator,
+    VartaWebCoordinator,
+    create_web_coordinator,
+)
 from .vendor.varta_modbus import VartaStorage
 
-PLATFORMS = [Platform.SENSOR, Platform.NUMBER]
+PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.NUMBER]
 
 
 @dataclass
@@ -55,12 +64,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: VartaConfigEntry) -> boo
     try:
         await modbus_coordinator.async_config_entry_first_refresh()
     except Exception as err:
-        raise ConfigEntryNotReady("Unable to communicate with VARTA via Modbus") from err
+        raise ConfigEntryNotReady(
+            "Unable to communicate with VARTA via Modbus"
+        ) from err
 
     web_coordinator = None
     if entry.data.get("cgi", True):
         web_host = entry.data.get("host_cgi") or entry.data[CONF_HOST]
-        web_coordinator = create_web_coordinator(
+        candidate = create_web_coordinator(
             hass,
             web_host,
             entry.data.get("username", "user1"),
@@ -68,10 +79,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: VartaConfigEntry) -> boo
             entry.data.get("scan_interval_cgi", DEFAULT_SCAN_INTERVAL_CGI),
         )
         try:
-            await web_coordinator.async_config_entry_first_refresh()
-        except Exception as err:
-            # Modbus remains usable even if the optional WebIF is unavailable.
+            await candidate.async_config_entry_first_refresh()
+        except Exception:
+            # CGI is optional. Modbus remains available when the WebIF is
+            # disabled, unavailable, or not supported by the device.
             web_coordinator = None
+        else:
+            web_coordinator = candidate
 
     entry.runtime_data = VartaRuntimeData(
         device=device,
