@@ -45,12 +45,14 @@ SENSORS: Final[tuple[VartaSensorEntityDescription, ...]] = (
     VartaSensorEntityDescription(key="discharging_power", name="Entladeleistung", source_key="discharging_power", **_POWER),
     VartaSensorEntityDescription(
         key="soc", name="Ladezustand", source_key="state_of_charge",
-        native_unit_of_measurement=PERCENTAGE, state_class=SensorStateClass.MEASUREMENT,
+        device_class=SensorDeviceClass.BATTERY, native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
     ),
     VartaSensorEntityDescription(key="grid_power", name="Netzleistung", source_key="grid_power", **_POWER),
     VartaSensorEntityDescription(
         key="installed_capacity", name="Batteriekapazität", source_key="installed_capacity",
         device_class=SensorDeviceClass.ENERGY_STORAGE, native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+        state_class=SensorStateClass.MEASUREMENT, entity_category=EntityCategory.DIAGNOSTIC,
     ),
     VartaSensorEntityDescription(key="error_code", name="Fehlercode", source_key="error_code", entity_category=EntityCategory.DIAGNOSTIC),
     VartaSensorEntityDescription(
